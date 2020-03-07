@@ -1,5 +1,5 @@
 clisrv: clisrv.o
-	cc clisrv.o -o $@ -I $(PWD)
+	cc clisrv.o -o $@ -I $(PWD) -lpthread
 
 %.o: %.c
-	cc -c $< -o $@ -I $(PWD)
+	cc -c $< -o $@ -I $(PWD) -lpthread

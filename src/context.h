@@ -25,7 +25,23 @@ static inline struct sg_context *get_ctx(const struct sock *sk)
 
 	return (__force void *)icsk->icsk_ulp_data;
 }
-struct sg_context *ctx_create(struct sock *sk);
+static inline void ctx_free(struct sock *sk)
+{
+	struct inet_connection_sock *icsk = inet_csk(sk);
+
+	struct sg_context *ctx = (__force void *)icsk->icsk_ulp_data;
+	if (!ctx)
+		return;
+
+	memzero_explicit(ctx->static_identity.static_private,
+			 NOISE_PUBLIC_KEY_LEN);
+	memzero_explicit(ctx->remote_identity.preshared_key,
+			 NOISE_SYMMETRIC_KEY_LEN);
+
+	rcu_assign_pointer(icsk->icsk_ulp_data, NULL);
+        kfree(ctx);
+}
+struct sg_context *ctx_create(struct sock *sk, const gfp_t priority);
 
 void ctx_copy_public_info(struct sg_context *ctx,
 			  struct sg_crypto_info *crypto_info);

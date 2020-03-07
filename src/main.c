@@ -1,5 +1,8 @@
+#include "proto.h"
+
 #include <linux/init.h>
 #include <linux/module.h>
+#include <net/sock.h>
 #include <net/tcp.h>
 
 MODULE_LICENSE("GPL v2");
@@ -8,8 +11,11 @@ MODULE_DESCRIPTION("TODO");
 MODULE_VERSION("0.1");
 MODULE_ALIAS_TCP_ULP("socketguard");
 
+// lock_sock(sk) is held
 static int ulp_init(struct sock *sk)
 {
+	init_protos(sk);
+
 	return 0;
 }
 

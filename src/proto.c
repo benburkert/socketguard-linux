@@ -25,6 +25,7 @@ void init_protos(struct sock *sk)
 
 		sg_prot = &sg_prots[idx];
 		*sg_prot = *tcp_prot;
+		sg_prot->getsockopt = sg_getsockopt;
 		sg_prot->setsockopt = sg_setsockopt;
 		// TODO: set sg_prot->(...) = sg_(...)
 
@@ -45,15 +46,52 @@ struct proto *get_sg_proto(struct sock *sk)
 
 #undef PROT_INET_IDX
 
+int sg_getsockopt(struct sock *sk, int level, int optname, char __user *optval,
+		  int __user *optlen)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	struct sg_crypto_info crypto_info;
+
+	if (level != SOL_SOCKETGUARD)
+		return ctx->tcp_prot->getsockopt(sk, level, optname, optval,
+						 optlen);
+	switch(optname) {
+	case SG_CRYPTO_INFO:
+		ctx_copy_public_info(ctx, &crypto_info);
+		if (copy_to_user(optval, &crypto_info, sizeof(crypto_info)))
+			return -EFAULT;
+		return 0;
+	default:
+		return -ENOPROTOOPT;
+	}
+}
+
 int sg_setsockopt(struct sock *sk, int level, int optname, char __user *optval,
 		  unsigned int optlen)
 {
 	struct sg_context *ctx = get_ctx(sk);
+	struct sg_crypto_info crypto_info;
+	int err;
 
 	if (level != SOL_SOCKETGUARD)
 		return ctx->tcp_prot->setsockopt(sk, level, optname, optval,
 						 optlen);
 
-	// TODO: set crypto info
-	return 0;
+	switch(optname) {
+	case SG_CRYPTO_INFO:
+		if (!optval || (optlen < sizeof(crypto_info)))
+			return -EINVAL;
+
+		err = copy_from_user(&crypto_info, optval, sizeof(crypto_info));
+		if (err) {
+			memzero_explicit(&crypto_info, sizeof(crypto_info));
+			return -EFAULT;
+		}
+
+		// TODO: lock_sock(sk)?
+		ctx_set_crypto_info(ctx, &crypto_info);
+		return 0;
+	default:
+		return -ENOPROTOOPT;
+	}
 }

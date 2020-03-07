@@ -1,6 +1,6 @@
 obj-m := socketguard.o
 
-socketguard-y += context.o main.o proto.o
+socketguard-y += context.o main.o noise.o proto.o
 
 default:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules

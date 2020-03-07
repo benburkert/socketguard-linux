@@ -26,7 +26,6 @@ static int ulp_init(struct sock *sk)
 	if (!ctx)
 		return -ENOMEM;
 
-
 	write_lock_bh(&sk->sk_callback_lock);
 	rcu_assign_pointer(icsk->icsk_ulp_data, ctx);
 	sk->sk_prot = sg_prot;

@@ -1,6 +1,9 @@
+#include "uapi/socketguard.h"
+
 #include <assert.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stddef.h>
 
 int main()
 {
@@ -28,6 +31,8 @@ int main()
 	assert(listen(sockfd, 1) == 0);
 
 	assert(setsockopt(sockfd, SOL_TCP, TCP_ULP, "socketguard", sizeof("socketguard")) == 0);
+
+	assert(setsockopt(sockfd, SOL_SOCKETGUARD, SOCKETGUARD_SET_INFO, NULL, 0) == 0);
 
 	return 0;
 }

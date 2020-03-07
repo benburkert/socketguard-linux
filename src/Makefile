@@ -10,3 +10,6 @@ clean:
 
 modules_install:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules_install
+
+test:
+	$(MAKE) -C tests clisrv

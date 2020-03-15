@@ -1,4 +1,5 @@
 #include "context.h"
+#include "noise.h"
 #include "proto.h"
 
 #include <linux/init.h>
@@ -22,6 +23,8 @@ static struct tcp_ulp_ops sg_tcp_ulp_ops __read_mostly = {
 
 static int __init mod_init(void)
 {
+	noise_init();
+
 	tcp_register_ulp(&sg_tcp_ulp_ops);
 	return 0;
 }

@@ -1,5 +1,6 @@
 #include "context.h"
 #include "proto.h"
+#include "send.h"
 #include "uapi/socketguard.h"
 
 #include <linux/highmem.h>
@@ -80,6 +81,7 @@ void init_protos(struct sock *sk)
 		sg_prot = &sg_prots[idx];
 		*sg_prot = *tcp_prot;
 		sg_prot->accept     = sg_accept;
+		sg_prot->connect    = sg_connect;
 		sg_prot->getsockopt = sg_getsockopt;
 		sg_prot->setsockopt = sg_setsockopt;
 		// TODO: set sg_prot->(...) = sg_(...)
@@ -165,4 +167,27 @@ struct sock *sg_accept(struct sock *sk, int flags, int *err, bool kern)
 	if (!get_ctx(newsk))
 		*err = -ENOMEM;
 	return newsk;
+}
+
+int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	int err;
+
+	if (!ctx->static_identity.has_identity ||
+	    !ctx->remote_identity.has_identity)
+		return -ENOKEY;
+
+
+	// TODO: support TFO
+
+	err = ctx->tcp_prot->connect(sk, uaddr, addr_len);
+	if (err)
+		return err;
+
+        release_sock(sk);
+	err = sg_send_handshake_initiation(sk);
+	lock_sock(sk);
+
+	return err;
 }

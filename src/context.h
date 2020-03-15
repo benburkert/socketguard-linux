@@ -12,6 +12,8 @@ struct sg_context {
 
 	struct sg_static_identity static_identity;
 	struct sg_remote_identity remote_identity;
+
+	struct sg_handshake handshake;
 };
 
 static inline struct sg_context *get_ctx(const struct sock *sk)

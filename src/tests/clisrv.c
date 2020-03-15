@@ -6,6 +6,8 @@
 #include <pthread.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
+#include <sys/socket.h>
 
 void *client(void *arg);
 
@@ -72,6 +74,10 @@ int main()
 	int clilen;
 
 	connfd = accept(sockfd, &cliaddr, &clilen);
+	assert(connfd > 0);
+
+	char buf[4096];
+	assert(read(connfd, buf, sizeof(buf)) > 0);
 
 	assert(pthread_join(tid, NULL) == 0);
 

@@ -1,5 +1,6 @@
 #include "context.h"
 #include "proto.h"
+#include "recv.h"
 #include "send.h"
 #include "uapi/socketguard.h"
 
@@ -84,7 +85,7 @@ void init_protos(struct sock *sk)
 		sg_prot->connect    = sg_connect;
 		sg_prot->getsockopt = sg_getsockopt;
 		sg_prot->setsockopt = sg_setsockopt;
-		// TODO: set sg_prot->(...) = sg_(...)
+		sg_prot->recvmsg    = sg_recvmsg;
 
 		smp_store_release(&tcp_prots[idx], tcp_prot);
 	}
@@ -185,9 +186,38 @@ int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	if (err)
 		return err;
 
-        release_sock(sk);
+	// TODO: release_sock is a workaround to avoid deadlock b/c send grabs
+	//       sock's lock.
+	release_sock(sk);
 	err = sg_send_handshake_initiation(sk);
 	lock_sock(sk);
 
 	return err;
+}
+
+int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
+	       int flags, int *addr_len)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	int ret;
+
+	switch (ctx->handshake.state) {
+	case HANDSHAKE_ZEROED:
+		ret = sg_recv_handshake_initiation(sk);
+		if (ret) {
+			// TODO: close early
+			return ret;
+		}
+
+		ret = sg_send_handshake_response(sk);
+		if (ret) {
+			// TODO: close early
+			return ret;
+		}
+
+		break;
+	}
+
+	// TODO: recvmsg then decrypt
+	return ctx->tcp_prot->recvmsg(sk, msg, len, nonblock, flags, addr_len);
 }

@@ -90,11 +90,11 @@ void *client(void *arg)
 
 	// open TCP socket, register SocketGuard ULP
 
-	int sockfd, connfd;
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	assert(sockfd >= 0);
+	int fd;
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	assert(fd >= 0);
 
-	assert(setsockopt(sockfd, SOL_TCP, TCP_ULP, "socketguard", sizeof("socketguard")) == 0);
+	assert(setsockopt(fd, SOL_TCP, TCP_ULP, "socketguard", sizeof("socketguard")) == 0);
 
 	// setup initiator mode with client's private key
 
@@ -103,11 +103,16 @@ void *client(void *arg)
 	memcpy(crypto_info.static_private, cli_private_key, SG_KEY_LEN);
 	memcpy(crypto_info.peer_public, srv_public_key, SG_KEY_LEN);
 
-	assert(setsockopt(sockfd, SOL_SOCKETGUARD, SG_CRYPTO_INFO, &crypto_info, sizeof(crypto_info)) == 0);
+	assert(setsockopt(fd, SOL_SOCKETGUARD, SG_CRYPTO_INFO, &crypto_info, sizeof(crypto_info)) == 0);
 
 	// connect
 
-	assert(connect(sockfd, (struct sockaddr *)srvaddr, sizeof(*srvaddr)) == 0);
+	assert(connect(fd, (struct sockaddr *)srvaddr, sizeof(*srvaddr)) == 0);
+
+	// send handshake & encrypted data
+
+	char *buf = "ping!";
+	assert(write(fd, buf, 6) == 6);
 }
 
 

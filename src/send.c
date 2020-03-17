@@ -53,3 +53,27 @@ int sg_send_handshake_initiation(struct sock *sk)
 		return -EINVAL;
 	return 0;
 }
+
+int sg_send_handshake_response(struct sock *sk)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	struct sg_message_handshake_response packet;
+	int ret;
+
+	if (ctx->handshake.state != HANDSHAKE_CONSUMED_INITIATION)
+		return -EINVAL;
+
+	handshake_create_response(&packet, &ctx->handshake,
+				  &ctx->static_identity,
+				  &ctx->remote_identity);
+
+	if (ctx->handshake.state != HANDSHAKE_CREATED_RESPONSE)
+		return -EKEYREJECTED;
+
+	ret = socket_send_buffer(sk, &packet, sizeof(packet));
+	if (ret < 0)
+		return ret;
+	if (ret != sizeof(packet))
+		return -EINVAL;
+	return 0;
+}

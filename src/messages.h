@@ -24,6 +24,7 @@ enum sg_limits {
 enum sg_message_type {
 	MESSAGE_INVALID = 0,
 	MESSAGE_HANDSHAKE_INITIATION = 1,
+	MESSAGE_HANDSHAKE_RESPONSE = 2,
 };
 
 struct sg_message_header {
@@ -42,6 +43,12 @@ struct sg_message_handshake_initiation {
 	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
 	u8 encrypted_static[sg_noise_encrypted_len(NOISE_PUBLIC_KEY_LEN)];
 	u8 encrypted_timestamp[sg_noise_encrypted_len(NOISE_TIMESTAMP_LEN)];
+};
+
+struct sg_message_handshake_response {
+	struct sg_message_header header;
+	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
+	u8 encrypted_nothing[sg_noise_encrypted_len(0)];
 };
 
 #endif /* _SG_MESSAGES_H */

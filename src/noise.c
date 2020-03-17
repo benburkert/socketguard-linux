@@ -132,6 +132,18 @@ static void mix_hash(u8 hash[NOISE_HASH_LEN], const u8 *src, size_t src_len)
 	blake2s_final(&blake, hash);
 }
 
+static void mix_psk(u8 chaining_key[NOISE_HASH_LEN], u8 hash[NOISE_HASH_LEN],
+		    u8 key[NOISE_SYMMETRIC_KEY_LEN],
+		    const u8 psk[NOISE_SYMMETRIC_KEY_LEN])
+{
+	u8 temp_hash[NOISE_HASH_LEN];
+
+	kdf(chaining_key, temp_hash, key, psk, NOISE_HASH_LEN, NOISE_HASH_LEN,
+	    NOISE_SYMMETRIC_KEY_LEN, NOISE_SYMMETRIC_KEY_LEN, chaining_key);
+	mix_hash(hash, temp_hash, NOISE_HASH_LEN);
+	memzero_explicit(temp_hash, NOISE_HASH_LEN);
+}
+
 static void message_ephemeral(u8 ephemeral_dst[NOISE_PUBLIC_KEY_LEN],
 			      const u8 ephemeral_src[NOISE_PUBLIC_KEY_LEN],
 			      u8 chaining_key[NOISE_HASH_LEN],
@@ -171,6 +183,18 @@ static void message_encrypt(u8 *dst_ciphertext, const u8 *src_plaintext,
 				 NOISE_HASH_LEN,
 				 0 /* Always zero for Noise_IK */, key);
 	mix_hash(hash, dst_ciphertext, sg_noise_encrypted_len(src_len));
+}
+
+static bool message_decrypt(u8 *dst_plaintext, const u8 *src_ciphertext,
+			    size_t src_len, u8 key[NOISE_SYMMETRIC_KEY_LEN],
+			    u8 hash[NOISE_HASH_LEN])
+{
+	if (!chacha20poly1305_decrypt(dst_plaintext, src_ciphertext, src_len,
+				      hash, NOISE_HASH_LEN,
+				      0 /* Always zero for Noise_IK */, key))
+		return false;
+	mix_hash(hash, src_ciphertext, src_len);
+	return true;
 }
 
 static void tai64n_now(u8 output[NOISE_TIMESTAMP_LEN])
@@ -243,4 +267,160 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 	handshake->state = HANDSHAKE_CREATED_INITIATION;
 out:
 	memzero_explicit(key, NOISE_SYMMETRIC_KEY_LEN);
+}
+
+void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
+				  struct sg_handshake *handshake,
+				  struct sg_static_identity *static_identity,
+				  struct sg_remote_identity *remote_identity)
+{
+	bool replay_attack;
+	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+	u8 chaining_key[NOISE_HASH_LEN];
+	u8 hash[NOISE_HASH_LEN];
+	u8 s[NOISE_PUBLIC_KEY_LEN];
+	u8 e[NOISE_PUBLIC_KEY_LEN];
+	u8 t[NOISE_TIMESTAMP_LEN];
+
+	if (unlikely(!static_identity->has_identity))
+		return;
+
+	handshake_init(chaining_key, hash, static_identity->static_public);
+
+	/* e */
+	message_ephemeral(e, src->unencrypted_ephemeral, chaining_key, hash);
+
+	/* es */
+	if (!mix_dh(chaining_key, key, static_identity->static_private, e))
+		goto out;
+
+	/* s */
+	if (!message_decrypt(s, src->encrypted_static,
+			     sizeof(src->encrypted_static), key, hash))
+		goto out;
+
+	/* ss */
+	kdf(chaining_key, key, NULL, handshake->precomputed_static_static,
+	    NOISE_HASH_LEN, NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN,
+	    chaining_key);
+
+	/* {t} */
+	if (!message_decrypt(t, src->encrypted_timestamp,
+			     sizeof(src->encrypted_timestamp), key, hash))
+		goto out;
+
+	replay_attack = memcmp(t, handshake->latest_timestamp,
+			       NOISE_TIMESTAMP_LEN) <= 0;
+
+	if (replay_attack)
+		goto out;
+
+	/* Success! Copy everything to handshake */
+	memcpy(remote_identity->remote_static, s, NOISE_PUBLIC_KEY_LEN);
+	memcpy(handshake->remote_ephemeral, e, NOISE_PUBLIC_KEY_LEN);
+	if (memcmp(t, handshake->latest_timestamp, NOISE_TIMESTAMP_LEN) > 0)
+		memcpy(handshake->latest_timestamp, t, NOISE_TIMESTAMP_LEN);
+	memcpy(handshake->hash, hash, NOISE_HASH_LEN);
+	memcpy(handshake->chaining_key, chaining_key, NOISE_HASH_LEN);
+	handshake->state = HANDSHAKE_CONSUMED_INITIATION;
+out:
+	memzero_explicit(key, NOISE_SYMMETRIC_KEY_LEN);
+	memzero_explicit(hash, NOISE_HASH_LEN);
+	memzero_explicit(chaining_key, NOISE_HASH_LEN);
+}
+
+void handshake_create_response(struct sg_message_handshake_response *dst,
+			       struct sg_handshake *handshake,
+			       struct sg_static_identity *static_identity,
+			       struct sg_remote_identity *remote_identity)
+{
+	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+
+	/* We need to wait for crng _before_ taking any locks, since
+	 * curve25519_generate_secret uses get_random_bytes_wait.
+	 */
+	wait_for_random_bytes();
+
+	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE);
+
+	/* e */
+	curve25519_generate_secret(handshake->ephemeral_private);
+	if (!curve25519_generate_public(dst->unencrypted_ephemeral,
+					handshake->ephemeral_private))
+		return;
+	message_ephemeral(dst->unencrypted_ephemeral,
+			  dst->unencrypted_ephemeral, handshake->chaining_key,
+			  handshake->hash);
+
+	/* ee */
+	if (!mix_dh(handshake->chaining_key, NULL, handshake->ephemeral_private,
+		    handshake->remote_ephemeral))
+		return;
+
+	/* se */
+	if (!mix_dh(handshake->chaining_key, NULL, handshake->ephemeral_private,
+		    remote_identity->remote_static))
+		return;
+
+	/* psk */
+	mix_psk(handshake->chaining_key, handshake->hash, key,
+		remote_identity->preshared_key);
+
+	/* {} */
+	message_encrypt(dst->encrypted_nothing, NULL, 0, key, handshake->hash);
+
+	handshake->state = HANDSHAKE_CREATED_RESPONSE;
+
+	memzero_explicit(key, NOISE_SYMMETRIC_KEY_LEN);
+}
+
+void handshake_consume_response(struct sg_message_handshake_response *src,
+				struct sg_handshake *handshake,
+				struct sg_static_identity *static_identity,
+				struct sg_remote_identity *remote_identity)
+{
+	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+	u8 hash[NOISE_HASH_LEN];
+	u8 chaining_key[NOISE_HASH_LEN];
+	u8 e[NOISE_PUBLIC_KEY_LEN];
+	u8 ephemeral_private[NOISE_PUBLIC_KEY_LEN];
+
+	if (unlikely(!static_identity->has_identity))
+		return;
+
+	memcpy(hash, handshake->hash, NOISE_HASH_LEN);
+	memcpy(chaining_key, handshake->chaining_key, NOISE_HASH_LEN);
+	memcpy(ephemeral_private, handshake->ephemeral_private,
+	       NOISE_PUBLIC_KEY_LEN);
+
+	/* e */
+	message_ephemeral(e, src->unencrypted_ephemeral, chaining_key, hash);
+
+	/* ee */
+	if (!mix_dh(chaining_key, NULL, ephemeral_private, e))
+		goto out;
+
+	/* se */
+	if (!mix_dh(chaining_key, NULL, static_identity->static_private, e))
+		goto out;
+
+	/* psk */
+	mix_psk(chaining_key, hash, key, remote_identity->preshared_key);
+
+	/* {} */
+	if (!message_decrypt(NULL, src->encrypted_nothing,
+			     sizeof(src->encrypted_nothing), key, hash))
+		goto out;
+
+	/* Success! Copy everything to handshake */
+
+	memcpy(handshake->remote_ephemeral, e, NOISE_PUBLIC_KEY_LEN);
+	memcpy(handshake->hash, hash, NOISE_HASH_LEN);
+	memcpy(handshake->chaining_key, chaining_key, NOISE_HASH_LEN);
+	handshake->state = HANDSHAKE_CONSUMED_RESPONSE;
+out:
+	memzero_explicit(key, NOISE_SYMMETRIC_KEY_LEN);
+	memzero_explicit(hash, NOISE_HASH_LEN);
+	memzero_explicit(chaining_key, NOISE_HASH_LEN);
+	memzero_explicit(ephemeral_private, NOISE_PUBLIC_KEY_LEN);
 }

@@ -18,5 +18,7 @@ int sg_setsockopt(struct sock *sk, int level, int optname, char __user *optval,
 		  unsigned int optlen);
 struct sock *sg_accept(struct sock *sk, int flags, int *err, bool kern);
 int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
+	       int flags, int *addr_len);
 
 #endif /* _SG_PROTO_H */

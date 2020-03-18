@@ -77,7 +77,12 @@ int main()
 	assert(connfd > 0);
 
 	char buf[4096];
-	assert(read(connfd, buf, sizeof(buf)) > 0);
+	int n = read(connfd, buf, sizeof(buf));
+
+	printf("request:  \"%s\"\n", buf);
+
+	char *msg = "pong!";
+	assert(write(connfd, msg, strlen(msg)) == strlen(msg));
 
 	assert(pthread_join(tid, NULL) == 0);
 
@@ -111,8 +116,13 @@ void *client(void *arg)
 
 	// send handshake & encrypted data
 
-	char *buf = "ping!";
-	assert(write(fd, buf, 6) == 6);
+	char *msg = "ping!";
+	assert(write(fd, msg, strlen(msg)) == strlen(msg));
+
+	char buf[4096];
+	int n = read(fd, buf, sizeof(buf));
+
+	printf("response: \"%s\"\n", buf);
 }
 
 

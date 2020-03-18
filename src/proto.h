@@ -20,5 +20,6 @@ struct sock *sg_accept(struct sock *sk, int flags, int *err, bool kern);
 int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
 int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	       int flags, int *addr_len);
+int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size);
 
 #endif /* _SG_PROTO_H */

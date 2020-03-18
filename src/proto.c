@@ -86,6 +86,7 @@ void init_protos(struct sock *sk)
 		sg_prot->getsockopt = sg_getsockopt;
 		sg_prot->setsockopt = sg_setsockopt;
 		sg_prot->recvmsg    = sg_recvmsg;
+		sg_prot->sendmsg    = sg_sendmsg;
 
 		smp_store_release(&tcp_prots[idx], tcp_prot);
 	}
@@ -195,29 +196,62 @@ int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	return err;
 }
 
+static inline bool sg_handshake_finished(struct sg_handshake handshake)
+{
+	return (handshake.state == HANDSHAKE_CREATED_RESPONSE ||
+		handshake.state == HANDSHAKE_CONSUMED_RESPONSE);
+}
+
+static int sg_do_handshake(struct sock *sk)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	int err;
+
+	switch (ctx->handshake.state) {
+	case HANDSHAKE_ZEROED:
+		err = sg_recv_handshake_initiation(sk);
+		if (err) {
+			// TODO: close early
+			return err;
+		}
+		return sg_send_handshake_response(sk);
+	case HANDSHAKE_CREATED_INITIATION:
+		err = sg_recv_handshake_response(sk);
+		if (err) {
+			// TODO: close early
+			return err;
+		}
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
 int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	       int flags, int *addr_len)
 {
 	struct sg_context *ctx = get_ctx(sk);
-	int ret;
 
-	switch (ctx->handshake.state) {
-	case HANDSHAKE_ZEROED:
-		ret = sg_recv_handshake_initiation(sk);
-		if (ret) {
-			// TODO: close early
-			return ret;
-		}
-
-		ret = sg_send_handshake_response(sk);
-		if (ret) {
-			// TODO: close early
-			return ret;
-		}
-
-		break;
+	if (!sg_handshake_finished(ctx->handshake)) {
+		int err = sg_do_handshake(sk);
+		if (err)
+			return err;
 	}
 
 	// TODO: recvmsg then decrypt
 	return ctx->tcp_prot->recvmsg(sk, msg, len, nonblock, flags, addr_len);
+}
+
+int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
+{
+	struct sg_context *ctx = get_ctx(sk);
+
+	if (!sg_handshake_finished(ctx->handshake)) {
+		int err = sg_do_handshake(sk);
+		if (err)
+			return err;
+	}
+
+	// TODO: encrypt before sendmsg
+	return ctx->tcp_prot->sendmsg(sk, msg, size);
 }

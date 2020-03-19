@@ -202,21 +202,21 @@ static inline bool sg_handshake_finished(struct sg_handshake handshake)
 		handshake.state == HANDSHAKE_CONSUMED_RESPONSE);
 }
 
-static int sg_do_handshake(struct sock *sk)
+static int sg_do_handshake(struct sock *sk, int nonblock, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	int err;
 
 	switch (ctx->handshake.state) {
 	case HANDSHAKE_ZEROED:
-		err = sg_recv_handshake_initiation(sk);
+		err = sg_recv_handshake_initiation(sk, nonblock, flags);
 		if (err) {
 			// TODO: close early
 			return err;
 		}
 		return sg_send_handshake_response(sk);
 	case HANDSHAKE_CREATED_INITIATION:
-		err = sg_recv_handshake_response(sk);
+		err = sg_recv_handshake_response(sk, nonblock, flags);
 		if (err) {
 			// TODO: close early
 			return err;
@@ -233,7 +233,7 @@ int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	struct sg_context *ctx = get_ctx(sk);
 
 	if (!sg_handshake_finished(ctx->handshake)) {
-		int err = sg_do_handshake(sk);
+		int err = sg_do_handshake(sk, nonblock, flags);
 		if (err)
 			return err;
 	}
@@ -247,7 +247,9 @@ int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	struct sg_context *ctx = get_ctx(sk);
 
 	if (!sg_handshake_finished(ctx->handshake)) {
-		int err = sg_do_handshake(sk);
+		int err = sg_do_handshake(sk,
+					  msg->msg_flags & MSG_DONTWAIT ? 1 : 0,
+					  msg->msg_flags);
 		if (err)
 			return err;
 	}

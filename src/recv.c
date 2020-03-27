@@ -22,6 +22,13 @@ int socket_recv_buffer(struct sock *sk, void *buffer, size_t len, int nonblock,
 	return 0;
 }
 
+int sg_peek_header(struct sock *sk, struct sg_message_header *hdr,
+			int nonblock, int flags)
+{
+	return socket_recv_buffer(sk, hdr, sizeof(*hdr), nonblock,
+				  flags|MSG_PEEK);
+}
+
 int sg_recv_handshake_initiation(struct sock *sk, int nonblock, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
@@ -68,5 +75,48 @@ int sg_recv_handshake_response(struct sock *sk, int nonblock, int flags)
 
 	if (ctx->handshake.state != HANDSHAKE_CONSUMED_RESPONSE)
 		return -EKEYREJECTED;
+
+	handshake_begin_session(&ctx->handshake, &ctx->keypair);
 	return 0;
+}
+
+int sg_recv_data(struct sock *sk, u8 **data, int nonblock, int flags)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	struct sg_message_data hdr;
+	struct sg_message_data *packet;
+	u8 *buf;
+	size_t len;
+	int ret;
+
+	if (!ctx->keypair.receiving.is_valid)
+		return -EINVAL;
+
+	ret = socket_recv_buffer(sk, &hdr, sizeof(hdr), nonblock, flags);
+	if (ret < 0)
+		return ret;
+	len = (size_t)(le32_to_cpu(hdr.len));
+
+	packet = kzalloc(sg_message_data_len(len), sk->sk_allocation);
+	memcpy(packet, &hdr, sizeof(hdr));
+
+	ret = socket_recv_buffer(sk, &packet->encrypted_data,
+				 sg_noise_encrypted_len(len), nonblock, flags);
+
+	if (ret < 0)
+		goto out;
+
+	buf = kzalloc(len, sk->sk_allocation);
+	if (!message_data_decrypt(packet, &ctx->keypair, buf, len)) {
+		ret = -EINVAL;
+		kzfree(buf);
+		goto out;
+	}
+
+	*data = buf;
+	ret = len;
+
+out:
+	kzfree(packet);
+	return ret;
 }

@@ -75,5 +75,26 @@ int sg_send_handshake_response(struct sock *sk)
 		return ret;
 	if (ret != sizeof(packet))
 		return -EINVAL;
+
+	handshake_begin_session(&ctx->handshake, &ctx->keypair);
 	return 0;
+}
+
+
+int sg_send_data(struct sock *sk, u8 *data, int len)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	int packet_len = sg_message_data_len(len);
+	struct sg_message_data *packet;
+	int ret;
+
+	if (!ctx->keypair.sending.is_valid)
+		return -EINVAL;
+
+	packet = kzalloc(packet_len, sk->sk_allocation);
+	message_data_encrypt(packet, &ctx->keypair, data, len);
+	ret = socket_send_buffer(sk, packet, packet_len);
+
+	kzfree(packet);
+	return ret;
 }

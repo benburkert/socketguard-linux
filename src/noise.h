@@ -4,16 +4,16 @@
 #include "messages.h"
 #include "uapi/socketguard.h"
 
-struct noise_symmetric_key {
+struct sg_noise_symmetric_key {
 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+	u64 counter;
 	u64 birthdate;
 	bool is_valid;
 };
 
-struct noise_keypair {
-	struct noise_symmetric_key sending;
-	struct noise_symmetric_key receiving;
-	bool i_am_the_initiator;
+struct sg_noise_keypair {
+	struct sg_noise_symmetric_key sending;
+	struct sg_noise_symmetric_key receiving;
 };
 
 struct sg_remote_identity {
@@ -74,5 +74,12 @@ void handshake_consume_response(struct sg_message_handshake_response *src,
 				struct sg_handshake *handshake,
 				struct sg_static_identity *static_identity,
 				struct sg_remote_identity *remote_identity);
+void handshake_begin_session(struct sg_handshake *handshake,
+			     struct sg_noise_keypair *keypair);
+
+void message_data_encrypt(struct sg_message_data *message,
+			  struct sg_noise_keypair *keypair, u8 *data, int len);
+bool message_data_decrypt(struct sg_message_data *message,
+			  struct sg_noise_keypair *keypair, u8 *data, int len);
 
 #endif /* _SG_NOISE_H */

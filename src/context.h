@@ -14,6 +14,8 @@ struct sg_context {
 	struct sg_remote_identity remote_identity;
 
 	struct sg_handshake handshake;
+
+	struct sg_noise_keypair keypair; // TODO: switch to list of keypairs
 };
 
 static inline struct sg_context *get_ctx(const struct sock *sk)

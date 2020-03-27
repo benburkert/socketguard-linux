@@ -18,13 +18,14 @@ enum sg_noise_lengths {
 #define sg_noise_encrypted_len(plain_len) ((plain_len) + NOISE_AUTHTAG_LEN)
 
 enum sg_limits {
-	INITIATIONS_PER_SECOND = 50,
+	GRANULARITY_PER_SECOND = 50,
 };
 
 enum sg_message_type {
 	MESSAGE_INVALID = 0,
 	MESSAGE_HANDSHAKE_INITIATION = 1,
 	MESSAGE_HANDSHAKE_RESPONSE = 2,
+	MESSAGE_DATA = 4,
 };
 
 struct sg_message_header {
@@ -50,5 +51,14 @@ struct sg_message_handshake_response {
 	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
 	u8 encrypted_nothing[sg_noise_encrypted_len(0)];
 };
+
+struct sg_message_data {
+	struct sg_message_header header;
+	__le32 len;
+	u8 encrypted_data[];
+};
+
+#define sg_message_data_len(plain_len) \
+	(sg_noise_encrypted_len(plain_len) + sizeof(struct sg_message_data))
 
 #endif /* _SG_MESSAGES_H */

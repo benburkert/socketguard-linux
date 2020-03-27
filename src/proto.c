@@ -198,8 +198,8 @@ int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 
 static inline bool sg_handshake_finished(struct sg_handshake handshake)
 {
-	return (handshake.state == HANDSHAKE_CREATED_RESPONSE ||
-		handshake.state == HANDSHAKE_CONSUMED_RESPONSE);
+	return likely(handshake.state == HANDSHAKE_CREATED_RESPONSE ||
+		      handshake.state == HANDSHAKE_CONSUMED_RESPONSE);
 }
 
 static int sg_do_handshake(struct sock *sk, int nonblock, int flags)
@@ -231,29 +231,61 @@ int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	       int flags, int *addr_len)
 {
 	struct sg_context *ctx = get_ctx(sk);
+	struct sg_message_header hdr;
+	u8 *data;
+	int ret, err;
 
 	if (!sg_handshake_finished(ctx->handshake)) {
-		int err = sg_do_handshake(sk, nonblock, flags);
+		err = sg_do_handshake(sk, nonblock, flags);
 		if (err)
 			return err;
 	}
 
-	// TODO: recvmsg then decrypt
-	return ctx->tcp_prot->recvmsg(sk, msg, len, nonblock, flags, addr_len);
+	memset(&hdr, 0, sizeof(hdr));
+	err = sg_peek_header(sk, &hdr, nonblock, flags);
+	if (err )
+		return err;
+
+	switch (hdr.type) {
+	case cpu_to_le32(MESSAGE_DATA):
+                ret = sg_recv_data(sk, &data, nonblock, flags);
+		if (ret <= 0)
+			break;
+
+		ret = copy_to_iter(data, ret, &msg->msg_iter);
+		break;
+	default:
+		// TODO: rekeying
+		return -EINVAL;
+	}
+
+	kzfree(data);
+	return ret;
 }
 
 int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	struct sg_context *ctx = get_ctx(sk);
+	u8 *buf;
+	size_t len;
+	int err;
 
 	if (!sg_handshake_finished(ctx->handshake)) {
-		int err = sg_do_handshake(sk,
-					  msg->msg_flags & MSG_DONTWAIT ? 1 : 0,
-					  msg->msg_flags);
+		err = sg_do_handshake(sk, msg->msg_flags & MSG_DONTWAIT ? 1 : 0,
+				      msg->msg_flags);
+
+
 		if (err)
 			return err;
 	}
 
-	// TODO: encrypt before sendmsg
-	return ctx->tcp_prot->sendmsg(sk, msg, size);
+	// TODO: rekeying
+
+	len = msg->msg_iter.count;
+        buf = kzalloc(len, sk->sk_allocation);
+	copy_from_iter(buf, len, &msg->msg_iter);
+
+	err = sg_send_data(sk, buf, (int)len);
+	kzfree(buf);
+	return err < 0 ? err : len;
 }

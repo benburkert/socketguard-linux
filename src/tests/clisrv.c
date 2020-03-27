@@ -15,6 +15,9 @@ static __u8 cli_private_key[SG_KEY_LEN];
 static __u8 srv_private_key[SG_KEY_LEN];
 static __u8 srv_public_key[SG_KEY_LEN];
 
+static char ping[] = "ping!";
+static char pong[] = "pong!";
+
 int main()
 {
 	// open TCP socket
@@ -76,13 +79,11 @@ int main()
 	connfd = accept(sockfd, &cliaddr, &clilen);
 	assert(connfd > 0);
 
-	char buf[4096];
+	char buf[4096] = {0};
 	int n = read(connfd, buf, sizeof(buf));
+	assert(strncmp(ping, buf, n) == 0);
 
-	printf("request:  \"%s\"\n", buf);
-
-	char *msg = "pong!";
-	assert(write(connfd, msg, strlen(msg)) == strlen(msg));
+	assert(write(connfd, pong, strlen(pong)) == strlen(pong));
 
 	assert(pthread_join(tid, NULL) == 0);
 
@@ -116,13 +117,11 @@ void *client(void *arg)
 
 	// send handshake & encrypted data
 
-	char *msg = "ping!";
-	assert(write(fd, msg, strlen(msg)) == strlen(msg));
+	assert(write(fd, ping, strlen(ping)) == strlen(ping));
 
 	char buf[4096];
 	int n = read(fd, buf, sizeof(buf));
-
-	printf("response: \"%s\"\n", buf);
+	assert(strncmp(pong, buf, n) == 0);
 }
 
 

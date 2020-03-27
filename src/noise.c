@@ -107,6 +107,24 @@ out:
 	memzero_explicit(output, BLAKE2S_HASH_SIZE + 1);
 }
 
+static void symmetric_key_init(struct sg_noise_symmetric_key *key)
+{
+	key->counter = 0;
+	key->birthdate = ktime_get_coarse_boottime_ns();
+	key->is_valid = true;
+}
+
+static void derive_keys(struct sg_noise_symmetric_key *first_dst,
+			struct sg_noise_symmetric_key *second_dst,
+			const u8 chaining_key[NOISE_HASH_LEN])
+{
+	kdf(first_dst->key, second_dst->key, NULL, NULL,
+	    NOISE_SYMMETRIC_KEY_LEN, NOISE_SYMMETRIC_KEY_LEN, 0, 0,
+	    chaining_key);
+	symmetric_key_init(first_dst);
+	symmetric_key_init(second_dst);
+}
+
 static bool __must_check mix_dh(u8 chaining_key[NOISE_HASH_LEN],
 				u8 key[NOISE_SYMMETRIC_KEY_LEN],
 				const u8 private[NOISE_PUBLIC_KEY_LEN],
@@ -209,7 +227,7 @@ static void tai64n_now(u8 output[NOISE_TIMESTAMP_LEN])
 	 * implementation.
 	 */
 	now.tv_nsec = ALIGN_DOWN(now.tv_nsec,
-		rounddown_pow_of_two(NSEC_PER_SEC / INITIATIONS_PER_SECOND));
+		rounddown_pow_of_two(NSEC_PER_SEC / GRANULARITY_PER_SECOND));
 
 	/* https://cr.yp.to/libtai/tai64.html */
 	*(__be64 *)output = cpu_to_be64(0x400000000000000aULL + now.tv_sec);
@@ -423,4 +441,36 @@ out:
 	memzero_explicit(hash, NOISE_HASH_LEN);
 	memzero_explicit(chaining_key, NOISE_HASH_LEN);
 	memzero_explicit(ephemeral_private, NOISE_PUBLIC_KEY_LEN);
+}
+
+void handshake_begin_session(struct sg_handshake *handshake,
+			     struct sg_noise_keypair *keypair)
+{
+	if (handshake->state == HANDSHAKE_CONSUMED_RESPONSE) {
+		derive_keys(&keypair->sending, &keypair->receiving,
+			    handshake->chaining_key);
+	} else {
+		derive_keys(&keypair->receiving, &keypair->sending,
+			    handshake->chaining_key);
+	}
+}
+
+void message_data_encrypt(struct sg_message_data *msg,
+			  struct sg_noise_keypair *keypair, u8 *data, int len)
+{
+	msg->header.type = MESSAGE_DATA;
+	msg->len = cpu_to_le32(len);
+
+	 chacha20poly1305_encrypt(msg->encrypted_data, data, len,
+				  NULL, 0, keypair->sending.counter++,
+				  keypair->sending.key);
+}
+
+bool message_data_decrypt(struct sg_message_data *msg,
+			  struct sg_noise_keypair *keypair, u8 *data, int len)
+{
+	return chacha20poly1305_decrypt(data, msg->encrypted_data,
+					sg_noise_encrypted_len(len), NULL, 0,
+					keypair->receiving.counter++,
+					keypair->receiving.key);
 }

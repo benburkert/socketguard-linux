@@ -241,13 +241,16 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 {
 	u8 timestamp[NOISE_TIMESTAMP_LEN];
 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+	u8 ss[NOISE_PUBLIC_KEY_LEN];
+
+	if (unlikely(!static_identity->has_identity ||
+		     !remote_identity->has_identity))
+		return;
 
 	/* We need to wait for crng _before_ taking any locks, since
 	 * curve25519_generate_secret uses get_random_bytes_wait.
 	 */
 	wait_for_random_bytes();
-
-	// TODO: already checked *_identity->has_identity in connect()
 
 	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION);
 	handshake_init(handshake->chaining_key, handshake->hash,
@@ -272,8 +275,10 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 			NOISE_PUBLIC_KEY_LEN, key, handshake->hash);
 
 	/* ss */
-	kdf(handshake->chaining_key, key, NULL,
-	    handshake->precomputed_static_static, NOISE_HASH_LEN,
+	if (!curve25519(ss, static_identity->static_private,
+			remote_identity->remote_static))
+		goto out;
+	kdf(handshake->chaining_key, key, NULL, ss, NOISE_HASH_LEN,
 	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN,
 	    handshake->chaining_key);
 
@@ -297,6 +302,7 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	u8 chaining_key[NOISE_HASH_LEN];
 	u8 hash[NOISE_HASH_LEN];
 	u8 s[NOISE_PUBLIC_KEY_LEN];
+	u8 ss[NOISE_PUBLIC_KEY_LEN];
 	u8 e[NOISE_PUBLIC_KEY_LEN];
 	u8 t[NOISE_TIMESTAMP_LEN];
 
@@ -317,10 +323,13 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 			     sizeof(src->encrypted_static), key, hash))
 		goto out;
 
+	// TODO: if remote_identity->static_public is not zero, s must be equal
+
 	/* ss */
-	kdf(chaining_key, key, NULL, handshake->precomputed_static_static,
-	    NOISE_HASH_LEN, NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN,
-	    chaining_key);
+	if (!curve25519(ss, static_identity->static_private, s))
+		goto out;
+	kdf(chaining_key, key, NULL, ss, NOISE_HASH_LEN,
+	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* {t} */
 	if (!message_decrypt(t, src->encrypted_timestamp,

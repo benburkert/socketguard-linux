@@ -41,11 +41,13 @@ struct sg_handshake {
 
 	u8 ephemeral_private[NOISE_PUBLIC_KEY_LEN];
 	u8 remote_ephemeral[NOISE_PUBLIC_KEY_LEN];
+	u8 remote_cookie[NOISE_COOKIE_LEN];
+	u8 remote_timestamp[NOISE_TIMESTAMP_LEN];
+	u8 static_static[NOISE_PUBLIC_KEY_LEN];
 
 	u8 hash[NOISE_HASH_LEN];
 	u8 chaining_key[NOISE_HASH_LEN];
-
-	u8 latest_timestamp[NOISE_TIMESTAMP_LEN];
+	u8 cookie[NOISE_COOKIE_LEN];
 };
 
 void noise_init(void);
@@ -55,6 +57,9 @@ void remote_identity_init(struct sg_remote_identity *remote_identity,
 			  const u8 preshared_key[NOISE_SYMMETRIC_KEY_LEN]);
 void static_identity_init(struct sg_static_identity *static_identity,
 			  const u8 private_key[NOISE_PUBLIC_KEY_LEN]);
+
+bool symmetric_key_expired(struct sg_noise_symmetric_key key,
+			   u64 expiration_seconds);
 
 void handshake_clear(struct sg_handshake *handshake);
 void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
@@ -72,6 +77,14 @@ void handshake_consume_response(struct sg_message_handshake_response *src,
 				struct sg_handshake *handshake,
 				struct sg_static_identity *static_identity,
 				struct sg_remote_identity *remote_identity);
+bool handshake_create_rekey(struct sg_message_handshake_rekey *dst,
+			    struct sg_handshake *handshake,
+			    struct sg_noise_keypair *keypair,
+			    struct sg_remote_identity *remote_identity);
+bool handshake_consume_rekey(struct sg_message_handshake_rekey *src,
+			     struct sg_handshake *handshake,
+			     struct sg_noise_keypair *keypair,
+			     struct sg_static_identity *static_identity);
 void handshake_begin_session(struct sg_handshake *handshake,
 			     struct sg_noise_keypair *keypair);
 

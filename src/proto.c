@@ -207,6 +207,16 @@ static inline bool sg_handshake_finished(struct sg_handshake handshake)
 		      handshake.state == HANDSHAKE_CONSUMED_RESPONSE);
 }
 
+static inline bool sg_sending_key_expired(struct sg_noise_keypair keypair)
+{
+	return symmetric_key_expired(keypair.sending, REKEY_AFTER_TIME);
+}
+
+static inline bool sg_receiving_key_expired(struct sg_noise_keypair keypair)
+{
+	return symmetric_key_expired(keypair.receiving, REJECT_AFTER_TIME);
+}
+
 static int sg_do_handshake(struct sock *sk, int nonblock, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
@@ -233,6 +243,11 @@ static int sg_do_handshake(struct sock *sk, int nonblock, int flags)
 	}
 }
 
+static int sg_do_rekey(struct sock *sk, int nonblock, int flags)
+{
+	return sg_send_handshake_rekey(sk, nonblock|flags);
+}
+
 int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	       int flags, int *addr_len)
 {
@@ -247,45 +262,51 @@ int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			return err;
 	}
 
-	memset(&hdr, 0, sizeof(hdr));
-	err = sg_peek_header(sk, &hdr, nonblock, flags);
-	if (err )
-		return err;
+	for (;;) {
+		memset(&hdr, 0, sizeof(hdr));
+		err = sg_peek_header(sk, &hdr, nonblock, flags);
+		if (err )
+			return err;
 
-	switch (hdr.type) {
-	case cpu_to_le32(MESSAGE_DATA):
-                ret = sg_recv_data(sk, &data, nonblock, flags);
-		if (ret <= 0)
+		switch (hdr.type) {
+		case cpu_to_le32(MESSAGE_HANDSHAKE_REKEY):
+			ret = sg_recv_handshake_rekey(sk, nonblock, flags);
+			if (ret < 0)
+				return ret;
 			break;
+		case cpu_to_le32(MESSAGE_DATA):
+			if (sg_receiving_key_expired(ctx->keypair)) {
+				return -EKEYREJECTED;
+			}
 
-		ret = copy_to_iter(data, ret, &msg->msg_iter);
-		break;
-	default:
-		// TODO: rekeying
-		return -EINVAL;
+			ret = sg_recv_data(sk, &data, nonblock, flags);
+			if (ret <= 0)
+				return ret;
+
+			ret = copy_to_iter(data, ret, &msg->msg_iter);
+			kzfree(data);
+			return ret;
+		default:
+			return -EINVAL;
+		}
 	}
-
-	kzfree(data);
-	return ret;
 }
 
 int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	int nonblock = msg->msg_flags&MSG_DONTWAIT;
+	int err = 0;
 	u8 *buf;
 	size_t len;
-	int err;
 
 	if (!sg_handshake_finished(ctx->handshake)) {
 		err = sg_do_handshake(sk, nonblock, msg->msg_flags);
-
-
-		if (err)
-			return err;
+	} else if (sg_sending_key_expired(ctx->keypair)) {
+		err = sg_do_rekey(sk, nonblock, msg->msg_flags);
 	}
-
-	// TODO: rekeying
+	if (err)
+		return err;
 
 	len = msg->msg_iter.count;
         buf = kzalloc(len, sk->sk_allocation);

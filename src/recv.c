@@ -81,6 +81,28 @@ int sg_recv_handshake_response(struct sock *sk, int nonblock, int flags)
 	return 0;
 }
 
+int sg_recv_handshake_rekey(struct sock *sk, int nonblock, int flags)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	struct sg_message_handshake_rekey packet;
+	int err;
+
+	if (unlikely(ctx->handshake.state != HANDSHAKE_CREATED_RESPONSE &&
+		    ctx->handshake.state != HANDSHAKE_CONSUMED_RESPONSE))
+		return -EINVAL;
+
+	err = socket_recv_buffer(sk, &packet, sizeof(packet), nonblock, flags);
+	if (err)
+		return err;
+	if (packet.header.type != cpu_to_le32(MESSAGE_HANDSHAKE_REKEY))
+		return -EINVAL;
+
+	if (!handshake_consume_rekey(&packet, &ctx->handshake, &ctx->keypair,
+				     &ctx->static_identity))
+		return -EKEYREJECTED;
+        return 0;
+}
+
 int sg_recv_data(struct sock *sk, u8 **data, int nonblock, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
@@ -116,7 +138,6 @@ int sg_recv_data(struct sock *sk, u8 **data, int nonblock, int flags)
 
 	*data = buf;
 	ret = len;
-
 out:
 	kzfree(packet);
 	return ret;

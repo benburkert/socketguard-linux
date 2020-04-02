@@ -84,6 +84,31 @@ int sg_send_handshake_response(struct sock *sk, int flags)
 	return 0;
 }
 
+int sg_send_handshake_rekey(struct sock *sk, int flags)
+{
+	struct sg_context *ctx = get_ctx(sk);
+	struct sg_noise_keypair keypair = ctx->keypair;
+	struct sg_message_handshake_rekey packet;
+	int ret;
+
+	if (unlikely(ctx->handshake.state != HANDSHAKE_CREATED_RESPONSE &&
+		    ctx->handshake.state != HANDSHAKE_CONSUMED_RESPONSE))
+		return -EINVAL;
+
+	if (!handshake_create_rekey(&packet, &ctx->handshake, &keypair,
+				    &ctx->remote_identity))
+		return -EKEYREJECTED;
+
+	ret = socket_send_buffer(sk, &packet, sizeof(packet), flags);
+	if (ret < 0)
+		return ret;
+	if (ret != sizeof(packet))
+		return -EINVAL;
+
+	ctx->keypair = keypair;
+	return 0;
+}
+
 int sg_send_data(struct sock *sk, u8 *data, int len, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);

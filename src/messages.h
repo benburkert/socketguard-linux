@@ -10,21 +10,24 @@
 enum sg_noise_lengths {
 	NOISE_PUBLIC_KEY_LEN = CURVE25519_KEY_SIZE,
 	NOISE_SYMMETRIC_KEY_LEN = CHACHA20POLY1305_KEY_SIZE,
-	NOISE_TIMESTAMP_LEN = sizeof(u64) + sizeof(u32),
+	NOISE_TIMESTAMP_LEN = sizeof(u64),
 	NOISE_AUTHTAG_LEN = CHACHA20POLY1305_AUTHTAG_SIZE,
 	NOISE_HASH_LEN = BLAKE2S_HASH_SIZE,
+	NOISE_COOKIE_LEN = 16,
 };
 
 #define sg_noise_encrypted_len(plain_len) ((plain_len) + NOISE_AUTHTAG_LEN)
 
 enum sg_limits {
-	GRANULARITY_PER_SECOND = 50,
+	REKEY_AFTER_TIME = 120,
+	REJECT_AFTER_TIME = 180,
 };
 
 enum sg_message_type {
 	MESSAGE_INVALID = 0,
 	MESSAGE_HANDSHAKE_INITIATION = 1,
 	MESSAGE_HANDSHAKE_RESPONSE = 2,
+	MESSAGE_HANDSHAKE_REKEY = 3,
 	MESSAGE_DATA = 4,
 };
 
@@ -43,13 +46,19 @@ struct sg_message_handshake_initiation {
 	struct sg_message_header header;
 	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
 	u8 encrypted_static[sg_noise_encrypted_len(NOISE_PUBLIC_KEY_LEN)];
-	u8 encrypted_timestamp[sg_noise_encrypted_len(NOISE_TIMESTAMP_LEN)];
+	u8 encrypted_cookie[sg_noise_encrypted_len(NOISE_COOKIE_LEN)];
 };
 
 struct sg_message_handshake_response {
 	struct sg_message_header header;
 	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
-	u8 encrypted_nothing[sg_noise_encrypted_len(0)];
+	u8 encrypted_cookie[sg_noise_encrypted_len(NOISE_COOKIE_LEN)];
+};
+
+struct sg_message_handshake_rekey {
+	struct sg_message_header header;
+	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
+	u8 encrypted_timestamp[sg_noise_encrypted_len(NOISE_TIMESTAMP_LEN)];
 };
 
 struct sg_message_data {

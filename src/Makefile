@@ -13,3 +13,4 @@ modules_install:
 
 test:
 	$(MAKE) -C tests clisrv
+	$(MAKE) -C tests clisrv-epoll

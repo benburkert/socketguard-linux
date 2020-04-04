@@ -174,6 +174,7 @@ struct sock *sg_accept(struct sock *sk, int flags, int *err, bool kern)
 int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 {
 	struct sg_context *ctx = get_ctx(sk);
+	int flags;
 	int err;
 
 	if (!ctx->static_identity.has_identity ||
@@ -187,10 +188,14 @@ int sg_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	if (err)
 		return err;
 
+	// TODO: better way to check if O_NONBLOCK is set?
+	flags = (sk->sk_socket->file->f_flags&SOCK_NONBLOCK) ? MSG_DONTWAIT : 0;
+
 	// TODO: release_sock is a workaround to avoid deadlock b/c send grabs
 	//       sock's lock.
 	release_sock(sk);
-	err = sg_send_handshake_initiation(sk);
+
+	err = sg_send_handshake_initiation(sk, flags);
 	lock_sock(sk);
 
 	return err;
@@ -214,7 +219,8 @@ static int sg_do_handshake(struct sock *sk, int nonblock, int flags)
 			// TODO: close early
 			return err;
 		}
-		return sg_send_handshake_response(sk);
+
+		return sg_send_handshake_response(sk, nonblock|flags);
 	case HANDSHAKE_CREATED_INITIATION:
 		err = sg_recv_handshake_response(sk, nonblock, flags);
 		if (err) {
@@ -266,13 +272,13 @@ int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	struct sg_context *ctx = get_ctx(sk);
+	int nonblock = msg->msg_flags&MSG_DONTWAIT;
 	u8 *buf;
 	size_t len;
 	int err;
 
 	if (!sg_handshake_finished(ctx->handshake)) {
-		err = sg_do_handshake(sk, msg->msg_flags & MSG_DONTWAIT ? 1 : 0,
-				      msg->msg_flags);
+		err = sg_do_handshake(sk, nonblock, msg->msg_flags);
 
 
 		if (err)
@@ -285,7 +291,7 @@ int sg_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
         buf = kzalloc(len, sk->sk_allocation);
 	copy_from_iter(buf, len, &msg->msg_iter);
 
-	err = sg_send_data(sk, buf, (int)len);
+	err = sg_send_data(sk, buf, (int)len, msg->msg_flags);
 	kzfree(buf);
 	return err < 0 ? err : len;
 }

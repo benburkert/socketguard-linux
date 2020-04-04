@@ -3,7 +3,7 @@
 #include "noise.h"
 #include "proto.h"
 
-int socket_send_buffer(struct sock *sk, void *buffer, size_t len)
+int socket_send_buffer(struct sock *sk, void *buffer, size_t len, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	struct page *p = alloc_page(sk->sk_allocation);
@@ -26,13 +26,13 @@ int socket_send_buffer(struct sock *sk, void *buffer, size_t len)
 		goto out;
 	}
 
-        ret = ctx->tcp_prot->sendpage(sk, p, 0, len, 0);
+        ret = ctx->tcp_prot->sendpage(sk, p, 0, len, flags);
 out:
 	__free_page(p);
 	return ret;
 }
 
-int sg_send_handshake_initiation(struct sock *sk)
+int sg_send_handshake_initiation(struct sock *sk, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	struct sg_message_handshake_initiation packet;
@@ -46,7 +46,7 @@ int sg_send_handshake_initiation(struct sock *sk)
 	if (ctx->handshake.state != HANDSHAKE_CREATED_INITIATION)
 		return -EKEYREJECTED;
 
-	ret = socket_send_buffer(sk, &packet, sizeof(packet));
+	ret = socket_send_buffer(sk, &packet, sizeof(packet), flags);
 	if (ret < 0)
 		return ret;
 	if (ret != sizeof(packet))
@@ -54,7 +54,7 @@ int sg_send_handshake_initiation(struct sock *sk)
 	return 0;
 }
 
-int sg_send_handshake_response(struct sock *sk)
+int sg_send_handshake_response(struct sock *sk, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	struct sg_message_handshake_response packet;
@@ -70,7 +70,7 @@ int sg_send_handshake_response(struct sock *sk)
 	if (ctx->handshake.state != HANDSHAKE_CREATED_RESPONSE)
 		return -EKEYREJECTED;
 
-	ret = socket_send_buffer(sk, &packet, sizeof(packet));
+	ret = socket_send_buffer(sk, &packet, sizeof(packet), flags);
 	if (ret < 0)
 		return ret;
 	if (ret != sizeof(packet))
@@ -80,8 +80,7 @@ int sg_send_handshake_response(struct sock *sk)
 	return 0;
 }
 
-
-int sg_send_data(struct sock *sk, u8 *data, int len)
+int sg_send_data(struct sock *sk, u8 *data, int len, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	int packet_len = sg_message_data_len(len);
@@ -93,7 +92,7 @@ int sg_send_data(struct sock *sk, u8 *data, int len)
 
 	packet = kzalloc(packet_len, sk->sk_allocation);
 	message_data_encrypt(packet, &ctx->keypair, data, len);
-	ret = socket_send_buffer(sk, packet, packet_len);
+	ret = socket_send_buffer(sk, packet, packet_len, flags);
 
 	kzfree(packet);
 	return ret;

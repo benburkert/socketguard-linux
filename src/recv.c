@@ -17,8 +17,9 @@ int socket_recv_buffer(struct sock *sk, void *buffer, size_t len, int nonblock,
 	ret = ctx->tcp_prot->recvmsg(sk, &msg, len, nonblock, flags, &addr_len);
 	if (ret < 0)
 		return ret;
-	if (ret != len)
+	if (ret != len) {
 		return -EINVAL;
+	}
 	return 0;
 }
 

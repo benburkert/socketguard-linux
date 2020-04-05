@@ -36,14 +36,14 @@ int sg_send_handshake_initiation(struct sock *sk, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	struct sg_message_handshake_initiation packet;
+	struct sg_handshake handshake = ctx->handshake;
 	int ret;
 
 	handshake_clear(&ctx->handshake);
-	handshake_create_initiation(&packet, &ctx->handshake,
-				    &ctx->static_identity,
+	handshake_create_initiation(&packet, &handshake, &ctx->static_identity,
 				    &ctx->remote_identity);
 
-	if (ctx->handshake.state != HANDSHAKE_CREATED_INITIATION)
+	if (handshake.state != HANDSHAKE_CREATED_INITIATION)
 		return -EKEYREJECTED;
 
 	ret = socket_send_buffer(sk, &packet, sizeof(packet), flags);
@@ -51,6 +51,8 @@ int sg_send_handshake_initiation(struct sock *sk, int flags)
 		return ret;
 	if (ret != sizeof(packet))
 		return -EINVAL;
+
+	ctx->handshake = handshake;
 	return 0;
 }
 
@@ -58,16 +60,15 @@ int sg_send_handshake_response(struct sock *sk, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
 	struct sg_message_handshake_response packet;
+	struct sg_handshake handshake = ctx->handshake;
 	int ret;
 
-	if (ctx->handshake.state != HANDSHAKE_CONSUMED_INITIATION)
+	if (handshake.state != HANDSHAKE_CONSUMED_INITIATION)
 		return -EINVAL;
 
-	handshake_create_response(&packet, &ctx->handshake,
-				  &ctx->static_identity,
-				  &ctx->remote_identity);
+	handshake_create_response(&packet, &handshake, &ctx->remote_identity);
 
-	if (ctx->handshake.state != HANDSHAKE_CREATED_RESPONSE)
+	if (handshake.state != HANDSHAKE_CREATED_RESPONSE)
 		return -EKEYREJECTED;
 
 	ret = socket_send_buffer(sk, &packet, sizeof(packet), flags);
@@ -76,7 +77,10 @@ int sg_send_handshake_response(struct sock *sk, int flags)
 	if (ret != sizeof(packet))
 		return -EINVAL;
 
-	handshake_begin_session(&ctx->handshake, &ctx->keypair);
+
+	handshake_begin_session(&handshake, &ctx->keypair);
+
+	ctx->handshake = handshake;
 	return 0;
 }
 
@@ -93,6 +97,8 @@ int sg_send_data(struct sock *sk, u8 *data, int len, int flags)
 	packet = kzalloc(packet_len, sk->sk_allocation);
 	message_data_encrypt(packet, &ctx->keypair, data, len);
 	ret = socket_send_buffer(sk, packet, packet_len, flags);
+	if (ret > 0)
+		ctx->keypair.sending.counter++;
 
 	kzfree(packet);
 	return ret;

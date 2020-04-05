@@ -358,7 +358,6 @@ out:
 
 void handshake_create_response(struct sg_message_handshake_response *dst,
 			       struct sg_handshake *handshake,
-			       struct sg_static_identity *static_identity,
 			       struct sg_remote_identity *remote_identity)
 {
 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
@@ -470,8 +469,8 @@ void message_data_encrypt(struct sg_message_data *msg,
 	msg->header.type = MESSAGE_DATA;
 	msg->len = cpu_to_le32(len);
 
-	 chacha20poly1305_encrypt(msg->encrypted_data, data, len,
-				  NULL, 0, keypair->sending.counter++,
+	 chacha20poly1305_encrypt(msg->encrypted_data, data, len, NULL, 0,
+				  keypair->sending.counter,
 				  keypair->sending.key);
 }
 

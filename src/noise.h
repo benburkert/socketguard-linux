@@ -67,7 +67,6 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 				  struct sg_remote_identity *remote_identity);
 void handshake_create_response(struct sg_message_handshake_response *dst,
 			       struct sg_handshake *handshake,
-			       struct sg_static_identity *static_identity,
 			       struct sg_remote_identity *remote_identity);
 void handshake_consume_response(struct sg_message_handshake_response *src,
 				struct sg_handshake *handshake,

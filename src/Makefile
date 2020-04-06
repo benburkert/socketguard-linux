@@ -14,3 +14,4 @@ modules_install:
 test:
 	$(MAKE) -C tests clisrv
 	$(MAKE) -C tests clisrv-epoll
+	$(MAKE) -C tests clisrv-rekey

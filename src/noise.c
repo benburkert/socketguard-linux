@@ -257,6 +257,7 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 	wait_for_random_bytes();
 
 	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION);
+	dst->header.len = cpu_to_le32(sg_message_len(*dst));
 	handshake_init(handshake->chaining_key, handshake->hash,
 		       remote_identity->remote_static);
 
@@ -364,6 +365,7 @@ void handshake_create_response(struct sg_message_handshake_response *dst,
 	wait_for_random_bytes();
 
 	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE);
+	dst->header.len = cpu_to_le32(sg_message_len(*dst));
 
 	/* e */
 	curve25519_generate_secret(handshake->ephemeral_private);
@@ -464,6 +466,7 @@ bool handshake_create_rekey(struct sg_message_handshake_rekey *dst,
 	u8 t[NOISE_TIMESTAMP_LEN];
 
 	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_REKEY);
+	dst->header.len = cpu_to_le32(sg_message_len(*dst));
 	handshake_init(chaining_key, hash, remote_identity->remote_static);
 
 	/* e */
@@ -568,7 +571,7 @@ void message_data_encrypt(struct sg_message_data *msg,
 			  struct sg_noise_keypair *keypair, u8 *data, int len)
 {
 	msg->header.type = MESSAGE_DATA;
-	msg->len = cpu_to_le32(len);
+	msg->header.len = cpu_to_le32(sg_noise_encrypted_len(len));
 
 	 chacha20poly1305_encrypt(msg->encrypted_data, data, len, NULL, 0,
 				  keypair->sending.counter,
@@ -578,8 +581,7 @@ void message_data_encrypt(struct sg_message_data *msg,
 bool message_data_decrypt(struct sg_message_data *msg,
 			  struct sg_noise_keypair *keypair, u8 *data, int len)
 {
-	return chacha20poly1305_decrypt(data, msg->encrypted_data,
-					sg_noise_encrypted_len(len), NULL, 0,
+	return chacha20poly1305_decrypt(data, msg->encrypted_data, len, NULL, 0,
 					keypair->receiving.counter++,
 					keypair->receiving.key);
 }

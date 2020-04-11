@@ -112,7 +112,8 @@ int sg_send_handshake_rekey(struct sock *sk, int flags)
 int sg_send_data(struct sock *sk, u8 *data, int len, int flags)
 {
 	struct sg_context *ctx = get_ctx(sk);
-	int packet_len = sg_message_data_len(len);
+	int packet_len = sizeof(struct sg_message_header) +
+		sg_noise_encrypted_len(len);
 	struct sg_message_data *packet;
 	int ret;
 

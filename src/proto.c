@@ -270,6 +270,9 @@ int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 
 		switch (hdr.type) {
 		case cpu_to_le32(MESSAGE_HANDSHAKE_REKEY):
+			if (!sg_header_len_valid(hdr, sg_message_handshake_rekey))
+				return -EINVAL;
+
 			ret = sg_recv_handshake_rekey(sk, nonblock, flags);
 			if (ret < 0)
 				return ret;
@@ -279,7 +282,8 @@ int sg_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 				return -EKEYREJECTED;
 			}
 
-			ret = sg_recv_data(sk, &data, nonblock, flags);
+			ret = sg_recv_data(sk, &data, le32_to_cpu(hdr.len),
+					   nonblock, flags);
 			if (ret <= 0)
 				return ret;
 

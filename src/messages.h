@@ -40,6 +40,7 @@ struct sg_message_header {
 	 * we achieve the same thing, and it makes checking faster.
 	 */
 	__le32 type;
+	__le32 len;
 };
 
 struct sg_message_handshake_initiation {
@@ -63,11 +64,9 @@ struct sg_message_handshake_rekey {
 
 struct sg_message_data {
 	struct sg_message_header header;
-	__le32 len;
 	u8 encrypted_data[];
 };
 
-#define sg_message_data_len(plain_len) \
-	(sg_noise_encrypted_len(plain_len) + sizeof(struct sg_message_data))
-
+#define sg_message_len(msg) (sizeof(msg) - sizeof(struct sg_message_header))
+#define sg_header_len_valid(hdr, msg) (hdr.len == sg_message_len(struct msg))
 #endif /* _SG_MESSAGES_H */

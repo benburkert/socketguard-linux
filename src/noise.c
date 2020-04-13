@@ -182,7 +182,6 @@ static void message_ephemeral(u8 ephemeral_dst[NOISE_PUBLIC_KEY_LEN],
 	    NOISE_PUBLIC_KEY_LEN, chaining_key);
 }
 
-
 void handshake_clear(struct sg_handshake *handshake)
 {
 	memset(&handshake->ephemeral_private, 0, NOISE_PUBLIC_KEY_LEN);
@@ -245,7 +244,6 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 				 struct sg_remote_identity *remote_identity)
 {
 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
-	u8 ss[NOISE_PUBLIC_KEY_LEN];
 
 	if (unlikely(!static_identity->has_identity ||
 		     !remote_identity->has_identity))
@@ -280,12 +278,10 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 			NOISE_PUBLIC_KEY_LEN, key, handshake->hash);
 
 	/* ss */
-	if (!curve25519(ss, static_identity->static_private,
-			remote_identity->remote_static))
+	if (!mix_dh(handshake->chaining_key, key,
+		    static_identity->static_private,
+		    remote_identity->remote_static))
 		goto out;
-	kdf(handshake->chaining_key, key, NULL, ss, NOISE_HASH_LEN,
-	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN,
-	    handshake->chaining_key);
 
 	/* cookie */
 	get_random_bytes(handshake->cookie, NOISE_COOKIE_LEN);
@@ -306,7 +302,6 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	u8 chaining_key[NOISE_HASH_LEN];
 	u8 hash[NOISE_HASH_LEN];
 	u8 s[NOISE_PUBLIC_KEY_LEN];
-	u8 ss[NOISE_PUBLIC_KEY_LEN];
 	u8 e[NOISE_PUBLIC_KEY_LEN];
 	u8 c[NOISE_COOKIE_LEN];
 
@@ -330,10 +325,8 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	// TODO: if remote_identity->static_public is not zero, s must be equal
 
 	/* ss */
-	if (!curve25519(ss, static_identity->static_private, s))
+	if (!mix_dh(chaining_key, key, static_identity->static_private, s))
 		goto out;
-	kdf(chaining_key, key, NULL, ss, NOISE_HASH_LEN,
-	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* cookie */
 	if (!message_decrypt(c, src->encrypted_cookie,

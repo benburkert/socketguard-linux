@@ -283,10 +283,13 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 			key, handshake->hash);
 
 	/* ss */
-	if (!mix_dh(handshake->chaining_key, key,
-		    static_identity->static_private,
-		    remote_identity->remote_static))
+	if (!curve25519(handshake->static_static,
+			static_identity->static_private,
+			remote_identity->remote_static))
 		goto out;
+	kdf(handshake->chaining_key, key, NULL, handshake->static_static,
+	    NOISE_HASH_LEN, NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN,
+	    handshake->chaining_key);
 
 	/* cookie */
 	get_random_bytes(handshake->cookie, NOISE_COOKIE_LEN);
@@ -307,6 +310,7 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	u8 chaining_key[NOISE_HASH_LEN];
 	u8 hash[NOISE_HASH_LEN];
 	u8 s[NOISE_PUBLIC_KEY_LEN];
+	u8 ss[NOISE_PUBLIC_KEY_LEN];
 	u8 v[NOISE_VERSION_LEN];
 	u8 e[NOISE_PUBLIC_KEY_LEN];
 	u8 c[NOISE_COOKIE_LEN];
@@ -338,8 +342,10 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 		goto out;
 
 	/* ss */
-	if (!mix_dh(chaining_key, key, static_identity->static_private, s))
+	if (!curve25519(ss, static_identity->static_private, s))
 		goto out;
+	kdf(chaining_key, key, NULL, ss, NOISE_HASH_LEN,
+	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* cookie */
 	if (!message_decrypt(c, src->encrypted_cookie,
@@ -351,10 +357,12 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	memcpy(&handshake->version, v, NOISE_VERSION_LEN);
 	memcpy(handshake->remote_cookie, c, NOISE_COOKIE_LEN);
 	memcpy(handshake->remote_ephemeral, e, NOISE_PUBLIC_KEY_LEN);
+	memcpy(handshake->static_static, ss, NOISE_PUBLIC_KEY_LEN);
 	memcpy(handshake->hash, hash, NOISE_HASH_LEN);
 	memcpy(handshake->chaining_key, chaining_key, NOISE_HASH_LEN);
 	handshake->state = HANDSHAKE_CONSUMED_INITIATION;
 out:
+	memzero_explicit(ss, NOISE_PUBLIC_KEY_LEN);
 	memzero_explicit(key, NOISE_SYMMETRIC_KEY_LEN);
 	memzero_explicit(hash, NOISE_HASH_LEN);
 	memzero_explicit(chaining_key, NOISE_HASH_LEN);
@@ -496,12 +504,12 @@ bool handshake_create_rekey(struct sg_message_handshake_rekey *dst,
 			  dst->unencrypted_ephemeral, chaining_key, hash);
 
 	/* es */
-	if (!mix_dh(chaining_key, key, e, remote_identity->remote_static))
+	if (!mix_dh(chaining_key, NULL, e, remote_identity->remote_static))
 		goto out;
 
 	/* ss */
-	kdf(chaining_key, key, NULL, handshake->static_static, NOISE_HASH_LEN,
-	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
+	kdf(chaining_key, NULL, NULL, handshake->static_static, NOISE_HASH_LEN,
+	    0, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* mix in remote cookie */
 	kdf(chaining_key, key, NULL, handshake->remote_cookie,
@@ -541,12 +549,12 @@ bool handshake_consume_rekey(struct sg_message_handshake_rekey *src,
 	message_ephemeral(e, src->unencrypted_ephemeral, chaining_key, hash);
 
 	/* es */
-	if (!mix_dh(chaining_key, key, static_identity->static_private, e))
+	if (!mix_dh(chaining_key, NULL, static_identity->static_private, e))
 		goto out;
 
 	/* ss */
-	kdf(chaining_key, key, NULL, handshake->static_static, NOISE_HASH_LEN,
-	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
+	kdf(chaining_key, NULL, NULL, handshake->static_static, NOISE_HASH_LEN,
+	    0, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* mix in local cookie */
 	kdf(chaining_key, key, NULL, handshake->cookie, NOISE_HASH_LEN,

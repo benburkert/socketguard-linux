@@ -51,9 +51,18 @@ int sg_recv_handshake_initiation(struct sock *sk, int nonblock, int flags)
 				     &ctx->static_identity,
 				     &ctx->remote_identity);
 
-        if (ctx->handshake.state != HANDSHAKE_CONSUMED_INITIATION) {
+        if (ctx->handshake.state != HANDSHAKE_CONSUMED_INITIATION)
 		return -EKEYREJECTED;
-	}
+	if (le16_to_cpu(ctx->version.max) <
+	    le16_to_cpu(ctx->handshake.version.min))
+		return -EKEYREJECTED;
+	if (le16_to_cpu(ctx->handshake.version.max) <
+	    le16_to_cpu(ctx->version.min))
+		return -EKEYREJECTED;
+
+	ctx->handshake.version.min =
+		cpu_to_le16(min(le16_to_cpu(ctx->handshake.version.max),
+				le16_to_cpu(ctx->version.max)));
 
 	return 0;
 }
@@ -79,6 +88,12 @@ int sg_recv_handshake_response(struct sock *sk, int nonblock, int flags)
 				   &ctx->remote_identity);
 
 	if (ctx->handshake.state != HANDSHAKE_CONSUMED_RESPONSE)
+		return -EKEYREJECTED;
+	if (le16_to_cpu(ctx->handshake.version.min) >
+	    le16_to_cpu(ctx->version.max))
+		return -EKEYREJECTED;
+	if (le16_to_cpu(ctx->handshake.version.min) <
+	    le16_to_cpu(ctx->version.min))
 		return -EKEYREJECTED;
 
 	handshake_begin_session(&ctx->handshake, &ctx->keypair);

@@ -38,6 +38,7 @@ enum sg_handshake_state {
 
 struct sg_handshake {
 	enum sg_handshake_state state;
+	struct sg_version version;
 
 	u8 ephemeral_private[NOISE_PUBLIC_KEY_LEN];
 	u8 remote_ephemeral[NOISE_PUBLIC_KEY_LEN];
@@ -65,7 +66,8 @@ void handshake_clear(struct sg_handshake *handshake);
 void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 				 struct sg_handshake *handshake,
 				 struct sg_static_identity *static_identity,
-				 struct sg_remote_identity *remote_identity);
+				 struct sg_remote_identity *remote_identity,
+				 struct sg_version *version);
 void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 				  struct sg_handshake *handshake,
 				  struct sg_static_identity *static_identity,

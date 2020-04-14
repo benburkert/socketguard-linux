@@ -241,7 +241,8 @@ bool symmetric_key_expired(struct sg_noise_symmetric_key key,
 void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 				 struct sg_handshake *handshake,
 				 struct sg_static_identity *static_identity,
-				 struct sg_remote_identity *remote_identity)
+				 struct sg_remote_identity *remote_identity,
+				 struct sg_version *version)
 {
 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
 
@@ -277,6 +278,10 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 	message_encrypt(dst->encrypted_static, static_identity->static_public,
 			NOISE_PUBLIC_KEY_LEN, key, handshake->hash);
 
+	/* version */
+	message_encrypt(dst->encrypted_version, (u8*)version, NOISE_VERSION_LEN,
+			key, handshake->hash);
+
 	/* ss */
 	if (!mix_dh(handshake->chaining_key, key,
 		    static_identity->static_private,
@@ -302,6 +307,7 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	u8 chaining_key[NOISE_HASH_LEN];
 	u8 hash[NOISE_HASH_LEN];
 	u8 s[NOISE_PUBLIC_KEY_LEN];
+	u8 v[NOISE_VERSION_LEN];
 	u8 e[NOISE_PUBLIC_KEY_LEN];
 	u8 c[NOISE_COOKIE_LEN];
 
@@ -322,7 +328,14 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 			     sizeof(src->encrypted_static), key, hash))
 		goto out;
 
-	// TODO: if remote_identity->static_public is not zero, s must be equal
+	if (remote_identity->has_identity &&
+	    memcmp(remote_identity->remote_static, s, NOISE_PUBLIC_KEY_LEN))
+		goto out;
+
+	/* version */
+	if (!message_decrypt(v, src->encrypted_version,
+			     sizeof(src->encrypted_version), key, hash))
+		goto out;
 
 	/* ss */
 	if (!mix_dh(chaining_key, key, static_identity->static_private, s))
@@ -335,6 +348,7 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 
 	/* Success! Copy everything to handshake */
 	memcpy(remote_identity->remote_static, s, NOISE_PUBLIC_KEY_LEN);
+	memcpy(&handshake->version, v, NOISE_VERSION_LEN);
 	memcpy(handshake->remote_cookie, c, NOISE_COOKIE_LEN);
 	memcpy(handshake->remote_ephemeral, e, NOISE_PUBLIC_KEY_LEN);
 	memcpy(handshake->hash, hash, NOISE_HASH_LEN);
@@ -383,6 +397,10 @@ void handshake_create_response(struct sg_message_handshake_response *dst,
 	mix_psk(handshake->chaining_key, handshake->hash, key,
 		remote_identity->preshared_key);
 
+	/* version */
+	message_encrypt(dst->encrypted_version, (u8*)(&handshake->version),
+			NOISE_VERSION_LEN, key, handshake->hash);
+
 	/* cookie */
 	get_random_bytes(handshake->cookie, NOISE_COOKIE_LEN);
 	message_encrypt(dst->encrypted_cookie, handshake->cookie,
@@ -402,6 +420,7 @@ void handshake_consume_response(struct sg_message_handshake_response *src,
 	u8 hash[NOISE_HASH_LEN];
 	u8 chaining_key[NOISE_HASH_LEN];
 	u8 e[NOISE_PUBLIC_KEY_LEN];
+	u8 v[NOISE_VERSION_LEN];
 	u8 c[NOISE_COOKIE_LEN];
 	u8 ephemeral_private[NOISE_PUBLIC_KEY_LEN];
 
@@ -427,6 +446,12 @@ void handshake_consume_response(struct sg_message_handshake_response *src,
 	/* psk */
 	mix_psk(chaining_key, hash, key, remote_identity->preshared_key);
 
+	/* version */
+	if (!message_decrypt(v, src->encrypted_version,
+			     sizeof(src->encrypted_version), key, hash)) {
+		goto out;
+	}
+
 	/* cookie */
 	if (!message_decrypt(c, src->encrypted_cookie,
 			     sizeof(src->encrypted_cookie), key, hash))
@@ -435,6 +460,7 @@ void handshake_consume_response(struct sg_message_handshake_response *src,
 	/* Success! Copy everything to handshake */
 
 	memcpy(handshake->remote_ephemeral, e, NOISE_PUBLIC_KEY_LEN);
+	memcpy(&handshake->version, v, NOISE_VERSION_LEN);
 	memcpy(handshake->remote_cookie, c, NOISE_COOKIE_LEN);
 	memcpy(handshake->hash, hash, NOISE_HASH_LEN);
 	memcpy(handshake->chaining_key, chaining_key, NOISE_HASH_LEN);

@@ -44,6 +44,7 @@ void ulp_clone(const struct request_sock *req, struct sock *newsk,
 		return;
 
 	// TODO: lock old sock via lock_sock(newsk)?
+	memcpy(&newctx->version, &oldctx->version, sizeof(newctx->version));
 	memcpy(&newctx->static_identity, &oldctx->static_identity,
 	       sizeof(newctx->static_identity));
 	memcpy(&newctx->remote_identity, &oldctx->remote_identity,
@@ -146,6 +147,11 @@ int sg_setsockopt(struct sock *sk, int level, int optname, char __user *optval,
 			memzero_explicit(&crypto_info, sizeof(crypto_info));
 			return -EFAULT;
 		}
+
+		if (crypto_info.min_version != SG_VERSION ||
+		    crypto_info.max_version != SG_VERSION ||
+		    crypto_info.min_version > crypto_info.max_version)
+			return -EINVAL;
 
 		lock_sock(sk);
 		ctx_set_crypto_info(ctx, &crypto_info);

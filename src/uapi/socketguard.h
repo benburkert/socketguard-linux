@@ -10,8 +10,11 @@
 
 #define SG_KEY_LEN	32
 
+#define SG_VERSION 0
+
 struct sg_crypto_info {
-	__u16 version;
+	__u16 min_version;
+	__u16 max_version;
 
 	__u8  static_public[SG_KEY_LEN];
 	__u8  static_private[SG_KEY_LEN];

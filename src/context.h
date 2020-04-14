@@ -10,6 +10,8 @@
 struct sg_context {
 	struct proto *tcp_prot;
 
+	struct sg_version version;
+
 	struct sg_static_identity static_identity;
 	struct sg_remote_identity remote_identity;
 

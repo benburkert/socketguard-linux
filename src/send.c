@@ -39,7 +39,7 @@ int sg_send_handshake_initiation(struct sock *sk, int flags)
 	struct sg_handshake handshake = ctx->handshake;
 	int ret;
 
-	handshake_clear(&ctx->handshake);
+	handshake_init(&handshake);
 	handshake_create_initiation(&packet, &handshake, &ctx->static_identity,
 				    &ctx->remote_identity, &ctx->version);
 

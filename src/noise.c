@@ -182,18 +182,31 @@ static void message_ephemeral(u8 ephemeral_dst[NOISE_PUBLIC_KEY_LEN],
 	    NOISE_PUBLIC_KEY_LEN, chaining_key);
 }
 
-void handshake_clear(struct sg_handshake *handshake)
+static u64 now(void)
+{
+	return ALIGN_DOWN(ktime_get_coarse_boottime_ns(),
+			  rounddown_pow_of_two(NSEC_PER_MSEC));
+}
+
+static void timestamp_now(u8 timestamp[NOISE_TIMESTAMP_LEN], u64 epoch)
+{
+	__le64 t = cpu_to_le64(now() - epoch);
+	memcpy(timestamp, &t, NOISE_TIMESTAMP_LEN);
+}
+
+void handshake_init(struct sg_handshake *handshake)
 {
 	memset(&handshake->ephemeral_private, 0, NOISE_PUBLIC_KEY_LEN);
 	memset(&handshake->remote_ephemeral, 0, NOISE_PUBLIC_KEY_LEN);
 	memset(&handshake->hash, 0, NOISE_HASH_LEN);
 	memset(&handshake->chaining_key, 0, NOISE_HASH_LEN);
+	handshake->epoch = now();
 	handshake->state = HANDSHAKE_ZEROED;
 }
 
-static void handshake_init(u8 chaining_key[NOISE_HASH_LEN],
-			   u8 hash[NOISE_HASH_LEN],
-			   const u8 remote_static[NOISE_PUBLIC_KEY_LEN])
+static void handshake_reset(u8 chaining_key[NOISE_HASH_LEN],
+			    u8 hash[NOISE_HASH_LEN],
+			    const u8 remote_static[NOISE_PUBLIC_KEY_LEN])
 {
 	memcpy(hash, handshake_init_hash, NOISE_HASH_LEN);
 	memcpy(chaining_key, handshake_init_chaining_key, NOISE_HASH_LEN);
@@ -220,13 +233,6 @@ static bool message_decrypt(u8 *dst_plaintext, const u8 *src_ciphertext,
 		return false;
 	mix_hash(hash, src_ciphertext, src_len);
 	return true;
-}
-
-static void timestamp_now(u8 timestamp[NOISE_TIMESTAMP_LEN])
-{
-	__le64 t = cpu_to_le64(ALIGN_DOWN(ktime_get_coarse_boottime_ns(),
-					  rounddown_pow_of_two(NSEC_PER_MSEC)));
-	memcpy(timestamp, &t, NOISE_TIMESTAMP_LEN);
 }
 
 bool symmetric_key_expired(struct sg_noise_symmetric_key key,
@@ -257,8 +263,8 @@ void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 
 	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION);
 	dst->header.len = cpu_to_le32(sg_message_len(*dst));
-	handshake_init(handshake->chaining_key, handshake->hash,
-		       remote_identity->remote_static);
+	handshake_reset(handshake->chaining_key, handshake->hash,
+		        remote_identity->remote_static);
 
 	/* e */
 	curve25519_generate_secret(handshake->ephemeral_private);
@@ -318,7 +324,7 @@ void handshake_consume_initiation(struct sg_message_handshake_initiation *src,
 	if (unlikely(!static_identity->has_identity))
 		return;
 
-	handshake_init(chaining_key, hash, static_identity->static_public);
+	handshake_reset(chaining_key, hash, static_identity->static_public);
 
 	/* e */
 	message_ephemeral(e, src->unencrypted_ephemeral, chaining_key, hash);
@@ -494,7 +500,7 @@ bool handshake_create_rekey(struct sg_message_handshake_rekey *dst,
 
 	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_REKEY);
 	dst->header.len = cpu_to_le32(sg_message_len(*dst));
-	handshake_init(chaining_key, hash, remote_identity->remote_static);
+	handshake_reset(chaining_key, hash, remote_identity->remote_static);
 
 	/* e */
 	curve25519_generate_secret(e);
@@ -517,7 +523,7 @@ bool handshake_create_rekey(struct sg_message_handshake_rekey *dst,
 	    chaining_key);
 
 	/* {t} */
-	timestamp_now(t);
+	timestamp_now(t, handshake->epoch);
 	message_encrypt(dst->encrypted_timestamp, t, NOISE_TIMESTAMP_LEN, key,
 			hash);
 
@@ -543,7 +549,7 @@ bool handshake_consume_rekey(struct sg_message_handshake_rekey *src,
 	u8 hash[NOISE_HASH_LEN];
 	u8 e[NOISE_PUBLIC_KEY_LEN];
 
-	handshake_init(chaining_key, hash, static_identity->static_public);
+	handshake_reset(chaining_key, hash, static_identity->static_public);
 
 	/* e */
 	message_ephemeral(e, src->unencrypted_ephemeral, chaining_key, hash);

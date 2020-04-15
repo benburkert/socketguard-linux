@@ -46,7 +46,7 @@ int sg_recv_handshake_initiation(struct sock *sk, int nonblock, int flags)
 	if (unlikely(packet.header.len != sg_message_len(packet)))
 		return -EINVAL;
 
-	handshake_clear(&ctx->handshake);
+	handshake_init(&ctx->handshake);
 	handshake_consume_initiation(&packet, &ctx->handshake,
 				     &ctx->static_identity,
 				     &ctx->remote_identity);

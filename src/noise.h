@@ -46,6 +46,7 @@ struct sg_handshake {
 	u8 remote_timestamp[NOISE_TIMESTAMP_LEN];
 	u8 static_static[NOISE_PUBLIC_KEY_LEN];
 
+	u64 epoch;
 	u8 hash[NOISE_HASH_LEN];
 	u8 chaining_key[NOISE_HASH_LEN];
 	u8 cookie[NOISE_COOKIE_LEN];
@@ -62,7 +63,7 @@ void static_identity_init(struct sg_static_identity *static_identity,
 bool symmetric_key_expired(struct sg_noise_symmetric_key key,
 			   u64 expiration_seconds);
 
-void handshake_clear(struct sg_handshake *handshake);
+void handshake_init(struct sg_handshake *handshake);
 void handshake_create_initiation(struct sg_message_handshake_initiation *dst,
 				 struct sg_handshake *handshake,
 				 struct sg_static_identity *static_identity,

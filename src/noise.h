@@ -42,14 +42,15 @@ struct sg_handshake {
 
 	u8 ephemeral_private[NOISE_PUBLIC_KEY_LEN];
 	u8 remote_ephemeral[NOISE_PUBLIC_KEY_LEN];
-	u8 remote_cookie[NOISE_COOKIE_LEN];
 	u8 remote_timestamp[NOISE_TIMESTAMP_LEN];
 	u8 static_static[NOISE_PUBLIC_KEY_LEN];
 
 	u64 epoch;
 	u8 hash[NOISE_HASH_LEN];
 	u8 chaining_key[NOISE_HASH_LEN];
-	u8 cookie[NOISE_COOKIE_LEN];
+
+	u8 send_rekey[NOISE_HASH_LEN];
+	u8 recv_rekey[NOISE_HASH_LEN];
 };
 
 void noise_init(void);

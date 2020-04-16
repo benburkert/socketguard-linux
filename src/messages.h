@@ -13,7 +13,6 @@ enum sg_noise_lengths {
 	NOISE_TIMESTAMP_LEN = sizeof(u64),
 	NOISE_AUTHTAG_LEN = CHACHA20POLY1305_AUTHTAG_SIZE,
 	NOISE_HASH_LEN = BLAKE2S_HASH_SIZE,
-	NOISE_COOKIE_LEN = 16,
 	NOISE_VERSION_LEN = 8,
 };
 
@@ -56,14 +55,12 @@ struct sg_message_handshake_initiation {
 	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
 	u8 encrypted_version[sg_noise_encrypted_len(NOISE_VERSION_LEN)];
 	u8 encrypted_static[sg_noise_encrypted_len(NOISE_PUBLIC_KEY_LEN)];
-	u8 encrypted_cookie[sg_noise_encrypted_len(NOISE_COOKIE_LEN)];
 };
 
 struct sg_message_handshake_response {
 	struct sg_message_header header;
 	u8 unencrypted_ephemeral[NOISE_PUBLIC_KEY_LEN];
 	u8 encrypted_version[sg_noise_encrypted_len(NOISE_VERSION_LEN)];
-	u8 encrypted_cookie[sg_noise_encrypted_len(NOISE_COOKIE_LEN)];
 };
 
 struct sg_message_handshake_rekey {

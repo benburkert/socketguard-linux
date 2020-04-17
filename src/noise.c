@@ -511,8 +511,8 @@ bool handshake_create_rekey(struct sg_message_handshake_rekey *dst,
 		goto out;
 
 	/* ss */
-	kdf(chaining_key, NULL, NULL, handshake->static_static, NOISE_HASH_LEN,
-	    0, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
+	kdf(chaining_key, key, NULL, handshake->static_static, NOISE_HASH_LEN,
+	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* {t} */
 	timestamp_now(t, handshake->epoch);
@@ -553,8 +553,8 @@ bool handshake_consume_rekey(struct sg_message_handshake_rekey *src,
 		goto out;
 
 	/* ss */
-	kdf(chaining_key, NULL, NULL, handshake->static_static, NOISE_HASH_LEN,
-	    0, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
+	kdf(chaining_key, key, NULL, handshake->static_static, NOISE_HASH_LEN,
+	    NOISE_SYMMETRIC_KEY_LEN, 0, NOISE_PUBLIC_KEY_LEN, chaining_key);
 
 	/* {t} */
 	if (!message_decrypt(timestamp, src->encrypted_timestamp,

@@ -407,13 +407,15 @@ void handshake_create_response(struct sg_message_handshake_response *dst,
 		    remote_identity->remote_static))
 		return;
 
-	/* version */
-	message_encrypt(dst->encrypted_version, (u8*)(&handshake->version),
-			NOISE_VERSION_LEN, key, handshake->hash);
-
 	/* psk */
 	mix_psk(handshake->chaining_key, handshake->hash, key,
 		remote_identity->preshared_key);
+
+	/* version */
+	message_encrypt(dst->encrypted_version, (u8*)(&handshake->version),
+			NOISE_VERSION_LEN, key, handshake->hash);
+	kdf(handshake->chaining_key, NULL, NULL, (u8*)(&handshake->version),
+	    NOISE_HASH_LEN, 0, 0, NOISE_VERSION_LEN, handshake->chaining_key);
 
 	memcpy(handshake->send_rekey, handshake->chaining_key, NOISE_HASH_LEN);
 	memcpy(handshake->recv_rekey, handshake->chaining_key, NOISE_HASH_LEN);
@@ -453,14 +455,16 @@ void handshake_consume_response(struct sg_message_handshake_response *src,
 	if (!mix_dh(chaining_key, NULL, static_identity->static_private, e))
 		goto out;
 
+	/* psk */
+	mix_psk(chaining_key, hash, key, remote_identity->preshared_key);
+
 	/* version */
 	if (!message_decrypt(v, src->encrypted_version,
 			     sizeof(src->encrypted_version), key, hash)) {
 		goto out;
 	}
-
-	/* psk */
-	mix_psk(chaining_key, hash, key, remote_identity->preshared_key);
+	kdf(chaining_key, NULL, NULL, v, NOISE_HASH_LEN, 0, 0,
+	    NOISE_VERSION_LEN, chaining_key);
 
 	/* Success! Copy everything to handshake */
 
